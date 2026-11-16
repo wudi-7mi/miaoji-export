@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>妙记导出 · 设置</title><link rel="stylesheet" href="popup.css"></head>
+<body><main>
+  <header><img src="icons/icon48.png" alt="" width="42" height="42"><div><h1>妙记导出 <span id="version"></span></h1><p>把文字记录，留在自己的笔记里。</p></div></header>
+  <section class="current"><div class="eyebrow">当前页面 <span id="page-status" class="badge">检查中</span></div><div id="hostname">正在读取页面…</div><button id="open-export" class="primary wide" disabled type="button">导出当前妙记</button><p>在页面中采集、预览和下载，可导出 Markdown、TXT、JSON。</p></section>
+  <section><div class="setting-row"><div><label for="enabled">启用妙记导出</label><p>在匹配的妙记页面显示导出按钮。</p></div><input id="enabled" type="checkbox" role="switch" class="switch"></div></section>
+  <section><div class="section-head"><h2>生效域名</h2><button id="reset-domains" class="text-button" type="button">恢复默认</button></div><p>每行一个域名，自动包含其子域名。企业专属域名需要单独授权。</p><label class="sr-only" for="domains">域名列表</label><textarea id="domains" rows="5" spellcheck="false"></textarea><div class="actions"><button id="save-domains" type="button">保存域名</button><button id="grant-domains" class="primary" type="button">保存并授权</button></div><p id="permission-state"></p></section>
+  <section><details><summary>高级适配</summary><p>仅在无法识别文字记录时填写 CSS 选择器。留空使用自动识别；段落选择器相对于文字区域，其余相对于段落。</p>
+    <label for="selector-root">文字区域 root</label><input id="selector-root" placeholder="例如 .transcript-container" spellcheck="false">
+    <label for="selector-row">段落 row</label><input id="selector-row" placeholder="例如 [data-paragraph-id]" spellcheck="false">
+    <label for="selector-text">正文 text</label><input id="selector-text" placeholder="例如 .paragraph-content" spellcheck="false">
+    <label for="selector-speaker">发言人 speaker</label><input id="selector-speaker" placeholder="例如 .speaker-name" spellcheck="false">
+    <label for="selector-time">时间戳 time</label><input id="selector-time" placeholder="例如 .timestamp" spellcheck="false">
+    <button id="save-selectors" class="wide" type="button">保存适配设置</button></details></section>
+  <div id="message" role="status" aria-live="polite"></div><footer>本地处理 · 不上传记录 · 不保存登录信息</footer>
+</main><script src="shared.js"></script><script src="popup.js"></script></body></html>

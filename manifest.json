@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "妙记导出",
+  "version": "0.1.1",
+  "description": "将妙记的文字记录导出为 Markdown、TXT 或 JSON，支持企业专属域名。",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage", "scripting", "activeTab", "clipboardWrite"],
+  "host_permissions": [
+    "https://*.feishu.cn/*", "https://*.feishuapp.cn/*",
+    "https://*.larksuite.com/*", "https://*.larkoffice.com/*",
+    "https://*.xfchat.iflytek.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "妙记导出", "default_popup": "popup.html"},
+  "options_page": "popup.html",
+  "icons": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png"},
+  "content_scripts": [{
+    "matches": [
+      "https://*.feishu.cn/*", "https://*.feishuapp.cn/*",
+      "https://*.larksuite.com/*", "https://*.larkoffice.com/*",
+      "https://*.xfchat.iflytek.com/*"
+    ],
+    "js": ["shared.js", "exporter.js", "extractor.js", "content.js"],
+    "run_at": "document_idle"
+  }]
+}

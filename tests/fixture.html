@@ -1,0 +1,19 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>长记录测试 · 妙记</title>
+<style>body{font:14px/1.5 sans-serif;margin:24px;background:#f5f6f7}main{display:flex;gap:28px}.video{width:42%;height:390px;background:#192333;color:white;display:grid;place-items:center;border-radius:10px}.right{width:52%;background:white;padding:20px;border-radius:10px}.transcript-container{height:360px;overflow-y:auto;border-top:1px solid #ddd;position:relative}.canvas{position:relative}.paragraph{position:absolute;left:0;right:0;height:72px;padding:5px 12px;box-sizing:border-box}.speaker-name{font-weight:bold;margin-right:14px}.timestamp{color:#999}.paragraph-content{padding-top:5px}.summary{padding:12px;color:#666}</style>
+<h1>产品讨论 / 测试会议</h1><main><div class="video">本地模拟播放器</div><div class="right"><h2>文字记录</h2><div class="summary">这是摘要控件，不应出现在导出正文里。</div><div class="transcript-container"><div class="canvas"></div></div></div></main>
+<script>
+window.totalRows = 180;
+const list = document.querySelector('.transcript-container'), canvas = document.querySelector('.canvas');
+canvas.style.height = totalRows * 72 + 'px';
+function stamp(index) { const seconds = index * 13; return String(Math.floor(seconds / 60)).padStart(2,'0') + ':' + String(seconds % 60).padStart(2,'0'); }
+function render() {
+  const start = Math.max(0, Math.floor(list.scrollTop / 72) - 2), end = Math.min(totalRows, start + 11);
+  canvas.innerHTML = Array.from({length:end-start}, (_, offset) => {
+    const index = start + offset;
+    return '<div class="paragraph" data-paragraph-id="p' + index + '" style="top:' + index*72 + 'px"><span class="speaker-name">发言人' + (index % 3 + 1) + '</span><span class="timestamp">' + stamp(index) + '</span><div class="paragraph-content"><span>段落 ' + index + '：这是原始文字，</span><span>保留中文、空格和标点。</span></div></div>';
+  }).join('');
+}
+let renderTimer;
+list.addEventListener('scroll', () => { clearTimeout(renderTimer); renderTimer = setTimeout(render, 35); });
+render();
+</script></html>

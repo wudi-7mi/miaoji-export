@@ -1,0 +1,12 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>企业妙记合成测试</title>
+<style>body{font:14px/1.5 sans-serif;margin:24px}.paragraphs-container{width:600px;height:360px;overflow:hidden}.rc-virtual-list-holder{height:360px;overflow-y:hidden;position:relative}.canvas{position:relative}.transcript-paragraph-item{height:72px;position:absolute;left:0;right:0}.paragraph-username-and-time{display:flex;gap:16px}.p-user-name::before{content:attr(user-name-content)}.p-time::before{content:attr(time-content)}</style>
+<h1>企业妙记合成测试</h1><div class="paragraphs-container"><div class="rc-virtual-list-holder"><div class="canvas"></div></div></div>
+<script>
+window.totalRows=64;
+const list=document.querySelector('.rc-virtual-list-holder'),canvas=document.querySelector('.canvas');
+canvas.style.height=totalRows*72+'px';
+function stamp(index){const seconds=index*17;return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');}
+function render(){const start=Math.max(0,Math.floor(list.scrollTop/72)-2),end=Math.min(totalRows,start+11);
+canvas.innerHTML=Array.from({length:end-start},(_,offset)=>{const index=start+offset;return '<div class="paragraph-editor-wrapper transcript-paragraph-item" contenteditable="false" style="top:'+index*72+'px"><div class="paragraph-detail"><div class="paragraph-detail-right"><div class="paragraph-username-and-time"><div class="p-user-name" user-name-content="测试发言人'+(index%3+1)+'"></div><div class="p-time" time-content="'+stamp(index)+'"></div></div><div class="mm-paragraph-content"><div class="editable-container"><div class="zone-container paragraph-content-editor" data-zone-id="zone-'+index+'" data-slate-editor="true"><div class="ace-line"><span class="minutes-sentence-wrapper"><span data-string="true" data-leaf="true">相同正文，</span><span data-string="true" data-leaf="true">保留连续文本。</span></span><span data-enter="true" data-leaf="true">\n</span></div></div></div></div></div></div></div>';}).join('');}
+let timer;list.addEventListener('scroll',()=>{clearTimeout(timer);timer=setTimeout(render,35);});render();
+</script></html>
