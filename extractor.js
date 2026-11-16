@@ -178,5 +178,112 @@
     const url = new URL(pageUrl); url.search = ""; url.hash = "";
     return { schemaVersion: 1, title: title(), sourceUrl: url.href, capturedAt: new Date().toISOString(), coverage: { mode: full ? "scroll" : "loaded", reachedEnd: full && reachedEnd, timedOut, blocked }, warnings, segments: output };
   }
-  scope.MiaojiExtractor = { AUTO, selectors, findRoot, readRow, rows, capture };
+  const NOTES_ROOT = '.summary-notes .meeting-summary-entry, .summary-notes [data-slate-editor], .smart-notes-container [data-slate-editor], [data-testid="meeting-notes-content"], .meeting-notes-content';
+  const NOTE_LABELS = ["会议纪要", "AI 纪要", "AI纪要", "AI Notes", "Meeting Notes", "Meeting notes"];
+  const TRANSCRIPT_LABELS = ["文字记录", "逐字稿", "Transcript"];
+  function tabs() {
+    return [...document.querySelectorAll('.page-right-tabs .ud__tabs__tab, [role="tab"], [data-testid="minutes-tab"]')].filter(visible);
+  }
+  function activeTab() { return tabs().find(node => node.classList.contains("ud__tabs__tab--active") || node.getAttribute("aria-selected") === "true"); }
+  function tabFor(labels) { return tabs().find(node => labels.includes(text(node))); }
+  function notesRoot() { return [...document.querySelectorAll(NOTES_ROOT)].find(visible); }
+  function readNotes(root) {
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll('script,style,button,svg,input,textarea,[role="button"],[hidden],[aria-hidden="true"],.meeting-summary-empty-text').forEach(node => node.remove());
+    for (const section of clone.querySelectorAll(".meeting-summary-section")) {
+      const body = section.cloneNode(true);
+      body.querySelectorAll(".meeting-summary-section-title").forEach(node => node.remove());
+      if (!clean(body.textContent)) section.remove();
+    }
+    clone.querySelectorAll("br").forEach(node => node.replaceWith("\n"));
+    const blocks = [];
+    const blockSelector = '.meeting-summary-section-title,h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,.ace-line,[data-node="true"]';
+    function visit(node) {
+      let inline = "";
+      function flush() { if (clean(inline)) blocks.push({ type: "paragraph", text: clean(inline) }); inline = ""; }
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) { inline += child.nodeValue; continue; }
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        if (child.matches(blockSelector)) {
+          flush();
+          const value = clean(child.textContent);
+          if (!value) continue;
+          const heading = child.matches(".meeting-summary-section-title,h1,h2,h3,h4,h5,h6");
+          blocks.push({ type: heading ? "heading" : child.matches("li") ? "list-item" : "paragraph", ...(heading ? { level: /^H[1-6]$/.test(child.tagName) ? Number(child.tagName[1]) : 1 } : {}), text: value });
+        } else if (child.querySelector(blockSelector)) { flush(); visit(child); }
+        else inline += child.textContent;
+      }
+      flush();
+    }
+    visit(clone);
+    if (!blocks.length) return { status: "empty", blocks: [], text: "", message: "本妙记的会议纪要暂无内容。" };
+    return { status: "captured", blocks, text: blocks.map(block => block.text).join("\n\n") };
+  }
+  async function waitUntil(predicate, { signal, pageUrl, timeout = 6000 } = {}) {
+    const started = performance.now();
+    for (;;) {
+      abortCheck(signal); assertVisible();
+      if (location.href !== pageUrl) throw new Error("页面已切换，采集已停止。请在当前妙记重新采集。");
+      if (predicate()) return true;
+      if (performance.now() - started > timeout) return false;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(done, 80);
+        function aborted() { clearTimeout(timer); signal?.removeEventListener("abort", aborted); reject(new DOMException("已取消采集", "AbortError")); }
+        function done() { signal?.removeEventListener("abort", aborted); resolve(); }
+        signal?.addEventListener("abort", aborted, { once: true });
+      });
+    }
+  }
+  function saveScrolls() {
+    return ['.rc-virtual-list-holder', '.transcript-container', '#smart-notes-scroll-container', '.smart-notes-scroll-container', '.meeting-notes-content'].flatMap(selector =>
+      [...document.querySelectorAll(selector)].map((node, index) => ({ node, selector, index })).filter(item => visible(item.node))
+        .map(item => ({ selector: item.selector, index: item.index, top: item.node.scrollTop })));
+  }
+  async function captureMeeting({ includeNotes = false, ...options } = {}) {
+    abortCheck(options.signal); assertVisible();
+    const pageUrl = location.href, previousTab = text(activeTab()), scrolls = saveScrolls();
+    try {
+      // Starting from notes is supported too. Only click existing navigation tabs.
+      const transcriptTab = tabFor(TRANSCRIPT_LABELS);
+      if (transcriptTab && previousTab && !TRANSCRIPT_LABELS.includes(previousTab)) {
+        transcriptTab.click();
+        if (!await waitUntil(() => { try { return Boolean(findRoot(selectors(options.custom))); } catch (_) { return false; } }, { signal: options.signal, pageUrl })) throw new Error("文字记录未能加载，请稍后重试。");
+      }
+      const result = await capture(options);
+      if (!includeNotes) return result;
+      options.onProgress?.({ stage: "notes", count: result.segments.length, progress: 100 });
+      const noteTab = tabFor(NOTE_LABELS);
+      if (!noteTab && !notesRoot()) {
+        result.meetingNotes = { status: "unavailable", blocks: [], text: "", message: "未找到会议纪要入口，本次仅导出文字记录。" };
+        return result;
+      }
+      noteTab?.click();
+      if (!await waitUntil(() => {
+        const root = notesRoot();
+        return root && !root.closest('[aria-busy="true"]') && !root.querySelector('[aria-busy="true"]');
+      }, { signal: options.signal, pageUrl })) {
+        result.meetingNotes = { status: "unavailable", blocks: [], text: "", message: "会议纪要未能加载，本次仅导出文字记录。" };
+        return result;
+      }
+      const root = notesRoot();
+      await settle(root, options.signal, 350);
+      if (location.href !== pageUrl || !root.isConnected) throw new Error("页面已切换，采集已停止。");
+      result.meetingNotes = readNotes(root);
+      return result;
+    } finally {
+      if (location.href === pageUrl) {
+        const previous = tabs().find(node => text(node) === previousTab);
+        if (previous && text(activeTab()) !== previousTab) {
+          previous.click();
+          // Restoration also runs after cancellation; do not reuse its signal.
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+        for (const saved of scrolls) {
+          const node = document.querySelectorAll(saved.selector)[saved.index];
+          if (node && visible(node)) node.scrollTop = saved.top;
+        }
+      }
+    }
+  }
+  scope.MiaojiExtractor = { AUTO, selectors, findRoot, readRow, rows, capture, readNotes, captureMeeting };
 })(globalThis);

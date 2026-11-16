@@ -35,3 +35,72 @@ test("filenames work on Windows", () => {
   assert.equal(exporter.filename('会议:/?*. ', "txt"), "会议____.txt");
   assert.equal(exporter.filename("", "json"), "妙记文字记录.json");
 });
+
+function sampleRecord() {
+  return { schemaVersion: 1, title: "讨论记录", sourceUrl: "https://example.com/minutes/test", capturedAt: "2026-01-01T00:00:00Z", warnings: [], segments: [
+    { id: "1", speaker: "甲", startMs: 0, text: "你" },
+    { id: "2", speaker: "甲", startMs: 10000, text: "好。" },
+    { id: "3", speaker: "乙", startMs: 20000, text: "Hello" },
+    { id: "4", speaker: "乙", startMs: 30000, text: "world." },
+    { id: "5", speaker: "甲", startMs: 40000, text: "另一轮发言。" },
+    { id: "6", speaker: "", startMs: 50000, text: "未知发言人一。" },
+    { id: "7", speaker: "", startMs: null, text: "未知发言人二。" }
+  ] };
+}
+test("merging preserves text, source IDs, turn boundaries and original records", () => {
+  const record = sampleRecord(), before = JSON.stringify(record);
+  const output = exporter.prepare(record, { mergeConsecutive: true });
+  assert.equal(output.segments.length, 5);
+  assert.equal(output.segments[0].text, "你好。");
+  assert.equal(output.segments[1].text, "Hello world.");
+  assert.deepEqual(output.segments[0].sourceIds, ["1", "2"]);
+  assert.equal(output.segments[0].lastStartMs, 10000);
+  assert.equal(output.segments[0].sourceCount, 2);
+  assert.ok(exporter.serialize(record, "md", { mergeConsecutive: true }).text.includes("00:00–00:10"));
+  assert.equal(JSON.stringify(record), before);
+  const english = { ...record, segments: [
+    { speaker: "A", startMs: 0, text: "First sentence." }, { speaker: "A", startMs: 1000, text: "Next sentence." }
+  ] };
+  assert.equal(exporter.prepare(english, { mergeConsecutive: true }).segments[0].text, "First sentence. Next sentence.");
+});
+test("speaker filtering never joins originally separated turns", () => {
+  const output = exporter.prepare(sampleRecord(), { speakers: ["甲"], mergeConsecutive: true });
+  assert.equal(output.segments.length, 2);
+  assert.equal(output.segments[0].text, "你好。");
+  assert.equal(output.segments[1].text, "另一轮发言。");
+  assert.equal(output.exportSelection.selectedCount, 3);
+  assert.equal(exporter.prepare(sampleRecord(), { speakers: [""] }).segments.length, 2);
+});
+test("time filtering uses inclusive start times and reports missing timestamps", () => {
+  const output = exporter.prepare(sampleRecord(), { fromMs: 20000, toMs: 30000 });
+  assert.deepEqual(output.segments.map(segment => segment.id), ["3", "4"]);
+  assert.ok(output.warnings.some(value => value.includes("缺少时间戳")));
+  assert.equal(exporter.prepare(sampleRecord(), { fromMs: 0, toMs: 0 }).segments[0].id, "1");
+  for (const options of [{ fromMs: 2, toMs: 1 }, { fromMs: -1 }, { toMs: NaN }, { speakers: [] }, { fromMs: 999999 }]) assert.throws(() => exporter.prepare(sampleRecord(), options));
+});
+test("combined exports preserve notes structure and apply selections to JSON", () => {
+  const record = sampleRecord();
+  record.meetingNotes = { status: "captured", text: "决策\n保留 <原文>\n行动项", blocks: [
+    { type: "heading", level: 1, text: "决策" }, { type: "paragraph", text: "保留 <原文>" }, { type: "list-item", text: "行动项" }
+  ] };
+  const options = { speakers: ["甲"], mergeConsecutive: true, includeNotes: true };
+  const markdown = exporter.serialize(record, "md", options).text;
+  assert.ok(markdown.includes("## 会议纪要\n\n### 决策"));
+  assert.ok(markdown.includes("保留 \\<原文\\>"));
+  assert.ok(markdown.indexOf("## 会议纪要") < markdown.indexOf("## 文字记录"));
+  assert.ok(markdown.includes("纪要保留全文"));
+  const json = JSON.parse(exporter.serialize(record, "json", options).text);
+  assert.equal(json.segments.length, 2); assert.ok(json.segments.every(segment => segment.speaker === "甲"));
+  assert.deepEqual(json.meetingNotes, record.meetingNotes);
+  for (const format of ["md", "txt", "json"]) {
+    const output = exporter.serialize(record, format, { ...options, includeNotes: false }).text;
+    assert.ok(!output.includes("行动项")); assert.ok(!output.includes("保留 <原文>"));
+  }
+});
+test("empty or uncaptured notes are reported without fabricated content", () => {
+  const record = sampleRecord();
+  record.meetingNotes = { status: "empty", blocks: [], text: "", message: "本妙记的会议纪要暂无内容。" };
+  const output = exporter.serialize(record, "md", { includeNotes: true }).text;
+  assert.ok(output.includes("会议纪要暂无内容")); assert.ok(!output.includes("## 会议纪要"));
+  assert.ok(exporter.serialize(sampleRecord(), "txt", { includeNotes: true }).text.includes("尚未采集会议纪要"));
+});

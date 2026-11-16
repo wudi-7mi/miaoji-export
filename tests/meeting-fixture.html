@@ -1,0 +1,15 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>组合导出测试</title>
+<style>body{font:14px/1.6 sans-serif;margin:24px}.page-right-tabs{width:650px}.ud__tabs__tab{display:inline-block;padding:8px 16px;cursor:pointer}.ud__tabs__tab--active{color:#3370ff}.transcript-container{height:250px;overflow:auto}.transcript-paragraph-item{height:75px}.p-user-name::before{content:attr(user-name-content)}.p-time::before{content:attr(time-content)}.p-user-name,.p-time{display:inline-block;margin-right:12px}.smart-notes-scroll-container{height:180px;overflow:auto}.meeting-summary-entry{min-height:400px}[hidden]{display:none!important}</style>
+<h1>组合导出测试</h1><div class="page-right-tabs"><div class="ud__tabs__tab" role="tab" aria-selected="false" id="notes-tab">会议纪要</div><div class="ud__tabs__tab ud__tabs__tab--active" role="tab" aria-selected="true" id="transcript-tab">文字记录</div>
+<div class="summary-notes" hidden><div id="smart-notes-scroll-container" class="smart-notes-scroll-container"><div class="meeting-summary-entry" data-testid="meeting-notes-content"><button>编辑纪要不应导出</button><div class="meeting-summary-section"><div class="meeting-summary-section-title">决策</div><p>采用方案 A，保留原始依据。</p><ul><li>完成验证</li><li>记录结论</li></ul></div><div class="meeting-summary-section"><div class="meeting-summary-section-title">下一步行动</div><p>下周讨论后续计划。</p></div></div></div></div>
+<div class="transcript-tab"><div class="transcript-container"></div></div></div>
+<script>
+const data=[['甲','00:00','第一句。'],['甲','00:05','第二句。'],['乙','00:10','第三句。'],['甲','00:15','第四句。'],['甲','00:20','第五句。'],['乙','00:25','第六句。']];
+document.querySelector('.transcript-container').innerHTML=data.map((row,index)=>'<div class="transcript-paragraph-item"><span class="p-user-name" user-name-content="'+row[0]+'"></span><span class="p-time" time-content="'+row[1]+'"></span><div class="paragraph-content-editor" data-zone-id="m'+index+'"><div class="ace-line">'+row[2]+'</div></div></div>').join('');
+const mode=new URLSearchParams(location.search).get('mode');
+if(mode==='empty')document.querySelector('.meeting-summary-entry').innerHTML='<div class="meeting-summary-section"><div class="meeting-summary-section-title">议程</div><div class="meeting-summary-empty-text">暂无内容</div></div>';
+function selectTab(notes){document.querySelector('.summary-notes').hidden=!notes;document.querySelector('.transcript-tab').hidden=notes;for(const tab of document.querySelectorAll('[role=tab]')){const active=(tab.id==='notes-tab')===notes;tab.setAttribute('aria-selected',String(active));tab.classList.toggle('ud__tabs__tab--active',active);}if(notes&&(mode==='delayed'||mode==='busy')){const root=document.querySelector('.meeting-summary-entry');root.setAttribute('aria-busy','true');if(mode==='delayed')setTimeout(()=>root.removeAttribute('aria-busy'),250);}}
+document.querySelector('#notes-tab').addEventListener('click',()=>selectTab(true));document.querySelector('#transcript-tab').addEventListener('click',()=>selectTab(false));
+if(mode==='unavailable'){document.querySelector('#notes-tab').remove();document.querySelector('.summary-notes').remove();}
+if(mode==='start-notes')selectTab(true);
+</script></html>

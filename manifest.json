@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "妙记导出",
-  "version": "0.1.1",
-  "description": "将妙记的文字记录导出为 Markdown、TXT 或 JSON，支持企业专属域名。",
+  "version": "0.2.0",
+  "description": "导出妙记的会议纪要与文字记录，支持发言人和时间筛选、连续发言合并及企业专属域名。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "scripting", "activeTab", "clipboardWrite"],
   "host_permissions": [

@@ -11,6 +11,7 @@ const browserPath = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrom
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "miaoji-test-"));
 const fixture = fs.readFileSync(path.join(__dirname, "fixture.html"), "utf8");
 const enterpriseFixture = fs.readFileSync(path.join(__dirname, "enterprise-fixture.html"), "utf8");
+const meetingFixture = fs.readFileSync(path.join(__dirname, "meeting-fixture.html"), "utf8");
 const url = "https://fixture.xfchat.iflytek.com/minutes/test-document";
 async function main() {
   const context = await chromium.launchPersistentContext(profile, { executablePath: browserPath, headless: true,
@@ -20,7 +21,10 @@ async function main() {
   try {
     await context.route("**/*", async route => {
       if (route.request().url().startsWith("chrome-extension:")) return route.continue();
-      if (route.request().isNavigationRequest()) return route.fulfill({ contentType: "text/html;charset=utf-8", body: route.request().url().endsWith('/minutes/enterprise') ? enterpriseFixture : fixture });
+      if (route.request().isNavigationRequest()) {
+        const pathname = new URL(route.request().url()).pathname;
+        return route.fulfill({ contentType: "text/html;charset=utf-8", body: pathname === '/minutes/meeting' ? meetingFixture : pathname === '/minutes/enterprise' ? enterpriseFixture : fixture });
+      }
       return route.abort();
     });
     if (!process.argv.includes('--extension-only')) {
@@ -93,6 +97,27 @@ async function main() {
     });
     assert.deepEqual(hiddenMidCapture,{stopped:true,restored:true});
     console.log('Background tab: capture stops with an explicit foreground instruction and restores scroll.');
+    for (const mode of ['rich','empty','unavailable','delayed','start-notes']) {
+      await page.goto('https://fixture.xfchat.iflytek.com/minutes/meeting?mode='+mode);
+      await page.addScriptTag({path:path.join(root,'exporter.js')});
+      await page.addScriptTag({path:path.join(root,'extractor.js')});
+      const before=await page.evaluate(()=>({tab:document.querySelector('[aria-selected="true"]').id,top:document.querySelector('.transcript-container').scrollTop}));
+      const result=await page.evaluate(()=>MiaojiExtractor.captureMeeting({full:false,includeNotes:true}));
+      assert.equal(result.segments.length,6);
+      assert.equal(result.meetingNotes.status,mode==='empty'?'empty':mode==='unavailable'?'unavailable':'captured');
+      if(result.meetingNotes.status==='captured') {
+        assert.ok(result.meetingNotes.blocks.some(block=>block.type==='heading'&&block.text==='决策'));
+        assert.ok(result.meetingNotes.text.includes('下周讨论后续计划'));
+        assert.ok(!result.meetingNotes.text.includes('编辑纪要不应导出'));
+      }
+      assert.deepEqual(await page.evaluate(()=>({tab:document.querySelector('[aria-selected="true"]').id,top:document.querySelector('.transcript-container').scrollTop})),before);
+    }
+    await page.goto('https://fixture.xfchat.iflytek.com/minutes/meeting?mode=busy');
+    await page.addScriptTag({path:path.join(root,'exporter.js')});
+    await page.addScriptTag({path:path.join(root,'extractor.js')});
+    const cancelledNotes=await page.evaluate(async()=>{const controller=new AbortController();const pending=MiaojiExtractor.captureMeeting({full:false,includeNotes:true,signal:controller.signal});setTimeout(()=>controller.abort(),120);try{await pending;return false;}catch(error){return error.name==='AbortError'&&document.querySelector('#transcript-tab').getAttribute('aria-selected')==='true';}});
+    assert.equal(cancelledNotes,true);
+    console.log('Notes: rich/empty/missing/delayed content, starting pane restoration and cancellation passed.');
     await page.close();
     return;
     }
@@ -137,6 +162,59 @@ async function main() {
     assert.ok(output.includes('段落 0')); assert.ok(output.includes('仅采集当前已加载'));
     assert.ok(!output.includes('摘要控件'));
     await source.screenshot({ path: path.join(root, 'test-results', 'export-panel.png'), fullPage: true });
+    await source.goto('https://fixture.xfchat.iflytek.com/minutes/meeting');
+    await source.bringToFront();
+    await source.getByRole('button',{name:'导出文字记录',exact:true}).waitFor();
+    await source.locator('.transcript-container').evaluate(node=>node.scrollTop=75);
+    await source.locator('#notes-tab').click();
+    await source.locator('#smart-notes-scroll-container').evaluate(node=>node.scrollTop=30);
+    await source.getByRole('button',{name:'导出文字记录',exact:true}).click();
+    await source.locator('#full').uncheck();
+    await source.getByRole('button',{name:'开始采集',exact:true}).click();
+    await source.waitForFunction(()=>!document.querySelector('#miaoji-export-host').shadowRoot.getElementById('download').disabled);
+    assert.ok((await source.locator('#preview-state').textContent()).includes('导出 4 段'));
+    assert.equal(await source.locator('#notes-tab').getAttribute('aria-selected'),'true');
+    assert.equal(await source.locator('#smart-notes-scroll-container').evaluate(node=>node.scrollTop),30);
+    await source.evaluate(()=>document.querySelector('#transcript-tab').click());
+    assert.equal(await source.locator('.transcript-container').evaluate(node=>node.scrollTop),75);
+    await source.evaluate(()=>document.querySelector('#notes-tab').click());
+    assert.ok((await source.locator('#preview').inputValue()).includes('## 会议纪要'));
+    await source.locator('#merge').uncheck();
+    assert.ok((await source.locator('#preview-state').textContent()).includes('导出 6 段'));
+    await source.locator('#from').fill('00:05'); await source.locator('#to').fill('00:20');
+    await source.locator('#speaker-filters input[value="乙"]').uncheck();
+    await source.locator('#merge').check();
+    assert.ok((await source.locator('#preview-state').textContent()).includes('选中 3 段 · 导出 2 段'));
+    for(const format of ['md','txt','json']) {
+      await source.locator('#format').selectOption(format);
+      const [selectedDownload]=await Promise.all([source.waitForEvent('download'),source.getByRole('button',{name:'下载文件',exact:true}).click()]);
+      assert.ok(selectedDownload.suggestedFilename().endsWith('.'+format));
+      const selectedText=fs.readFileSync(await selectedDownload.path(),'utf8');
+      assert.ok(selectedText.includes('第二句。')); assert.ok(selectedText.includes('第四句。第五句。'));
+      assert.ok(!selectedText.includes('第一句。')); assert.ok(!selectedText.includes('第三句。')); assert.ok(!selectedText.includes('第六句。'));
+      assert.ok(selectedText.includes('采用方案 A'));
+      if(format==='json') {
+        const json=JSON.parse(selectedText); assert.equal(json.segments.length,2);
+        assert.deepEqual(json.segments.map(segment=>segment.sourceIds),[['m1'],['m3','m4']]);
+      }
+    }
+    await source.locator('#speaker-filters input[value="甲"]').uncheck();
+    assert.equal(await source.locator('#download').isDisabled(),true);
+    assert.equal(await source.locator('#copy').isDisabled(),true);
+    assert.equal(await source.locator('#preview').inputValue(),'');
+    await source.locator('#all-speakers').click();
+    await source.locator('#from').fill('invalid');
+    assert.equal(await source.locator('#download').isDisabled(),true);
+    assert.ok((await source.locator('#preview-state').textContent()).includes('时间请输入'));
+    await source.locator('#from').fill('00:25'); await source.locator('#to').fill('00:05');
+    assert.ok((await source.locator('#preview-state').textContent()).includes('开始时间不能晚于'));
+    await source.locator('#from').fill(''); await source.locator('#to').fill('');
+    await source.locator('#include-notes').uncheck();
+    const withoutNotes=JSON.parse(await source.locator('#preview').inputValue());
+    assert.equal(withoutNotes.meetingNotes,undefined);
+    await source.locator('#include-notes').check(); await source.locator('#format').selectOption('md');
+    await source.screenshot({path:path.join(root,'test-results','combined-export-panel.png'),fullPage:true});
+    console.log('Real MV3 combined export: pane/scroll restoration, merge toggle, speaker/time filters, three downloaded formats, empty/invalid selections and notes opt-out passed.');
     // UI route changes remove the launcher and clear the previous document.
     await source.evaluate(() => history.pushState({}, '', '/docx/something'));
     await source.locator('#miaoji-export-host').waitFor({ state: 'detached' });
