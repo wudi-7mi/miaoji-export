@@ -10,14 +10,24 @@
 
 ## 安装与使用
 
-无需构建，运行文件就在项目根目录。
+从源码安装时，先在项目目录运行下面的命令，生成固定的轻量加载目录。该命令只使用 Node.js 内置模块，无需安装测试依赖。
+
+```powershell
+npm run prepare:unpacked
+```
+
+输出目录：`%LOCALAPPDATA%\MiaojiExport\edge`。这里仅包含插件运行所需的 15 个文件，约 61 KB。源码仓库包含测试依赖、Git 数据等开发文件，加载扩展时请选择生成的目录。
 
 1. 打开 `edge://extensions/`，开启开发人员模式。
-2. 点击「加载解压缩的扩展」，选择 `C:\Users\hanwang42\Documents\project\miaoji_export`。
+2. 点击「加载解压缩的扩展」，选择 `C:\Users\hanwang42\AppData\Local\MiaojiExport\edge`。
 3. 刷新已经打开的妙记页面。
 4. 点击页面右下角「导出文字记录」，或工具栏插件图标中的「导出当前妙记」。
 5. 选择是否同时采集会议纪要，点击「开始采集」。
 6. 勾选发言人、填写起止时间、切换连续发言合并，核对预览和提示后下载。
+
+如果之前加载了源码仓库目录，先停用旧副本，再加载上述目录，避免两个副本同时运行。更换加载路径可能产生新的扩展 ID，旧副本中的开关和自定义域名需要重新配置。之后更新统一再次运行 `npm run prepare:unpacked`，在扩展管理页点击该副本的「重新加载」，再刷新妙记页面。
+
+使用 ZIP 包时，解压到一个固定目录并加载其中包含 `manifest.json` 的文件夹即可；ZIP 本身只包含运行文件。
 
 默认包含 `feishu.cn`、`feishuapp.cn`、`larksuite.com`、`larkoffice.com` 和本次使用的企业域 `xfchat.iflytek.com`，均匹配子域名。仅在 HTTPS `/minutes/<标识>` 详情页显示入口。
 
@@ -72,6 +82,8 @@
 - `extractor.js`：文字与纪要识别、滚动采集、标签恢复、取消与范围提示。
 - `exporter.js`：发言人/时间筛选、连续发言合并、组合格式化与安全文件名。
 - `content.js`：Shadow DOM 导出入口、筛选控件、预览、复制和本地下载。
+- `scripts/runtime-files.js`：打包、固定加载目录和集成测试共用的运行文件清单。
+- `scripts/prepare-unpacked.js`：生成或更新固定的轻量加载目录。
 - `tests/`：纯函数回归、虚拟列表与真实 MV3 集成测试；全部使用合成内容，不连接真实账户。
 
 设计参考同级 `feishu-to-markdown` 仓库的 MV3、企业域名按需授权、设置状态和动态注入方式；两个项目独立，不修改原仓库。
@@ -85,12 +97,15 @@ npm ci
 npm run check
 npm test
 npm run test:browser
+npm run prepare:unpacked
 npm run package
 ```
 
 浏览器测试在独立临时配置中拦截并返回合成妙记页面，覆盖普通及企业虚拟列表、属性元信息、恢复标签及滚动位置、取消、超时、后台切换、适配失败、重复发言、纪要空状态和延迟加载、组合导出、筛选与合并开关、无结果/无效时间、扩展开关、重复注入、三种格式下载和 SPA 导航。自动测试不会接入已有 Edge 配置。`test-results/` 中保存模拟页面的 UI 截图，不包含实际会议资料。
 
 Windows 打包结果位于 `dist/miaoji-export-edge-0.2.0.zip`，Manifest 位于压缩包根目录。
+
+加载耗时可用 `npm run benchmark:load` 对比。该脚本在独立临时 Edge 配置中交替加载源码和运行目录，统计扩展注册耗时，20 秒未完成则记录超时；不连接已有浏览器或账户。可用 `EDGE_PATH` 指定 Edge 路径，或用 `npm run benchmark:load -- --runtime-only` 仅检查运行目录。测量不包含用户配置中的安全检查、扩展管理页操作及弹窗打开耗时。
 
 实现所用的浏览器接口参考 [Chrome scripting 官方文档](https://developer.chrome.com/docs/extensions/reference/api/scripting) 和 [权限声明官方文档](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions)。
 

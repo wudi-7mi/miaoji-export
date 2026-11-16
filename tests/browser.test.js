@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const { execFileSync } = require("node:child_process");
+const { copyRuntime } = require("../scripts/runtime-files.js");
 const root = path.resolve(__dirname, "..");
 const browserPath = process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "miaoji-test-"));
@@ -123,7 +124,11 @@ async function main() {
     }
     // Load a real MV3 extension into this isolated test profile.
     const session = await context.browser().newBrowserCDPSession();
-    const { id } = await session.send("Extensions.loadUnpacked", { path: root });
+    const extensionDirectory = path.join(profile, 'runtime-extension');
+    copyRuntime(root, extensionDirectory);
+    assert.equal(fs.existsSync(path.join(extensionDirectory,'node_modules')),false);
+    assert.equal(fs.existsSync(path.join(extensionDirectory,'.git')),false);
+    const { id } = await session.send("Extensions.loadUnpacked", { path: extensionDirectory });
     console.log("Loaded real extension into isolated browser profile.");
     const source = await context.newPage();
     const sourceSession = await context.newCDPSession(source);
