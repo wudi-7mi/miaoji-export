@@ -1,6 +1,19 @@
+# Dependencies and generated artifacts
 node_modules/
 dist/
 test-results/
+playwright-report/
+blob-report/
+
+# Local browser profiles and diagnostics
 .browser-profile/
 *.har
 *.log
+
+# Local environment and operating system files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+Desktop.ini

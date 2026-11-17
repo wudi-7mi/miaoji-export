@@ -2,24 +2,26 @@
 
 独立的 Edge / Chrome Manifest V3 扩展，将妙记右侧的会议纪要与文字记录导出为 Markdown、TXT 或 JSON，支持连续发言合并、按发言人和时间范围筛选。
 
-当前版本：`0.2.0`。已通过本地模拟页面和真实 MV3 扩展测试。`0.1.1` 的基础提取器于 2026-11-16 通过 Playwright MCP 在已登录的讯飞企业部署妙记页面验证：采集到 589 段、24,128 个正文字符、4 位发言人，时间从 `00:00` 到 `01:31:29`；段落 ID 无重复、时间顺序正确、结束后恢复原滚动位置。此验证在页面内存中进行，没有将实际会议正文写入项目。
+当前版本：`0.2.0`。支持 Markdown、TXT、JSON 导出，按发言人和时间筛选、合并连续发言，以及会议纪要组合导出。所有处理均在本地浏览器完成。
 
-`0.2.0` 的合并、筛选、纪要组合导出及三种格式的实际下载已在隔离浏览器的真实 MV3 扩展中验证。实际企业页面已确认会议纪要结构，但这场会议的四个纪要栏目均为空；非空、延迟加载、无入口、取消及从纪要页开始采集等情况通过合成页面测试覆盖。实际账户中尚未安装本扩展。
+项目包含纯函数回归测试、合成妙记页面和隔离浏览器中的真实 MV3 扩展测试。企业部署页面的基础文字提取已人工验证；非空会议纪要、延迟加载及取消等情况通过合成页面覆盖。平台组件变化或企业部署差异仍可能需要适配。
 
 企业适配支持 `.transcript-paragraph-item`、以 `user-name-content` / `time-content` 属性展示的发言人和时间戳、嵌套 `data-zone-id` 段落标识，以及 `overflow: hidden` 的 `rc-virtual-list-holder` 虚拟滚动。无法识别的版本会明确提示，不会将整页摘要、菜单当作正文导出。
 
 ## 安装与使用
 
-从源码安装时，先在项目目录运行下面的命令，生成固定的轻量加载目录。该命令只使用 Node.js 内置模块，无需安装测试依赖。
+从源码安装需要 Node.js 22 或更新版本。克隆仓库后，生成固定的轻量加载目录；该命令只使用 Node.js 内置模块，无需安装测试依赖。
 
 ```powershell
+git clone https://github.com/wudi-7mi/miaoji-export.git
+cd miaoji-export
 npm run prepare:unpacked
 ```
 
-输出目录：`%LOCALAPPDATA%\MiaojiExport\edge`。这里仅包含插件运行所需的 15 个文件，约 61 KB。源码仓库包含测试依赖、Git 数据等开发文件，加载扩展时请选择生成的目录。
+Windows 默认输出目录：`%LOCALAPPDATA%\MiaojiExport\edge`，命令结束时会打印完整路径。这里仅包含插件运行所需文件。源码仓库包含测试依赖、Git 数据等开发文件，加载扩展时请选择生成的目录。
 
 1. 打开 `edge://extensions/`，开启开发人员模式。
-2. 点击「加载解压缩的扩展」，选择 `C:\Users\hanwang42\AppData\Local\MiaojiExport\edge`。
+2. 点击「加载解压缩的扩展」，选择命令打印的加载目录。
 3. 刷新已经打开的妙记页面。
 4. 点击页面右下角「导出文字记录」，或工具栏插件图标中的「导出当前妙记」。
 5. 选择是否同时采集会议纪要，点击「开始采集」。
@@ -29,7 +31,7 @@ npm run prepare:unpacked
 
 使用 ZIP 包时，解压到一个固定目录并加载其中包含 `manifest.json` 的文件夹即可；ZIP 本身只包含运行文件。
 
-默认包含 `feishu.cn`、`feishuapp.cn`、`larksuite.com`、`larkoffice.com` 和本次使用的企业域 `xfchat.iflytek.com`，均匹配子域名。仅在 HTTPS `/minutes/<标识>` 详情页显示入口。
+默认包含 `feishu.cn`、`feishuapp.cn`、`larksuite.com`、`larkoffice.com` 和企业域 `xfchat.iflytek.com`，均匹配子域名。仅在 HTTPS `/minutes/<标识>` 详情页显示入口。
 
 企业使用其他域名时，在设置的域名列表添加该域名，点击「保存并授权」。域名按标签边界匹配，`example.com.evil.com` 不会被当作 `example.com`。关闭功能、移除域名会移除已有页面的入口；重新开启会向已授权的已打开页面注入脚本。
 
@@ -64,7 +66,7 @@ npm run prepare:unpacked
 
 在插件设置展开「高级适配」，按需要填写 CSS 选择器。留空使用 `extractor.js` 中的自动规则。
 
-| 字段 | 含义 | 本次企业页面使用的选择器 |
+| 字段 | 含义 | 企业页面选择器示例 |
 | --- | --- | --- |
 | root | 右侧文字记录区域 | `.paragraphs-container` |
 | row | 每个完整发言段落，相对 root | `.transcript-paragraph-item` |
@@ -86,7 +88,7 @@ npm run prepare:unpacked
 - `scripts/prepare-unpacked.js`：生成或更新固定的轻量加载目录。
 - `tests/`：纯函数回归、虚拟列表与真实 MV3 集成测试；全部使用合成内容，不连接真实账户。
 
-设计参考同级 `feishu-to-markdown` 仓库的 MV3、企业域名按需授权、设置状态和动态注入方式；两个项目独立，不修改原仓库。
+设计参考 `feishu-to-markdown` 项目的 MV3、企业域名按需授权、设置状态和动态注入方式。本仓库可以独立开发、测试与打包，无需其他项目目录。
 
 ## 开发与打包
 
@@ -105,6 +107,8 @@ npm run package
 
 Windows 打包结果位于 `dist/miaoji-export-edge-0.2.0.zip`，Manifest 位于压缩包根目录。
 
+`node_modules/`、`dist/`、测试报告、浏览器配置及本地 `.env` 文件由 `.gitignore` 排除；只提交源码、测试、锁文件和项目文档。文本文件统一使用 LF 换行。
+
 加载耗时可用 `npm run benchmark:load` 对比。该脚本在独立临时 Edge 配置中交替加载源码和运行目录，统计扩展注册耗时，20 秒未完成则记录超时；不连接已有浏览器或账户。可用 `EDGE_PATH` 指定 Edge 路径，或用 `npm run benchmark:load -- --runtime-only` 仅检查运行目录。测量不包含用户配置中的安全检查、扩展管理页操作及弹窗打开耗时。
 
 实现所用的浏览器接口参考 [Chrome scripting 官方文档](https://developer.chrome.com/docs/extensions/reference/api/scripting) 和 [权限声明官方文档](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions)。
@@ -113,4 +117,4 @@ Windows 打包结果位于 `dist/miaoji-export-edge-0.2.0.zip`，Manifest 位于
 
 所有提取、预览、转换均在本地浏览器完成。仅将开关、域名和选择器写入扩展同步设置，不持久化会议正文，不读取 Cookie、不调用转写 API、不上传会议内容。点击复制才写剪贴板；点击下载才生成本地文件。详见 [PRIVACY.md](PRIVACY.md)。
 
-本项目是独立第三方工具，与飞书、Lark、讯飞无隶属或背书关系。使用 MIT License，保留参考仓库的版权声明。
+本项目是独立第三方工具，与飞书、Lark、讯飞无隶属或背书关系。使用 [MIT License](LICENSE)。
